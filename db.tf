@@ -13,7 +13,7 @@ resource "azurerm_network_interface" "db_nic" {
 resource "azurerm_virtual_machine" "db_vm" {
   name                  = "db-vm"
   location              = var.location
-  resource_group_name   = var.resource_group_name
+  resource_group_name   = azurerm_resource_group.rg.name
   network_interface_ids = [azurerm_network_interface.db_nic.id]
   vm_size               = var.db_vm_size
 
