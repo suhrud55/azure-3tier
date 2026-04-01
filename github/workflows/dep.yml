@@ -1,0 +1,51 @@
+name: Deploy 3-Tier App
+on: push:
+  branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: hashicorp/setup-terraform@v2
+        with: terraform_version: 1.5.0
+      - uses: azure/login@v1
+        with: creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - run: terraform init
+      - run: terraform plan -out=tfplan
+      - run: terraform apply -auto-approve tfplan
+      - name: Get IPs
+        run: |
+          echo "WEB_IP=$(terraform output -raw web_public_ip)" >> $GITHUB_ENV
+          echo "APP_IP=$(terraform output -raw app_private_ip)" >> $GITHUB_ENV
+      - name: Update frontend
+        run: sed -i "s|<APP_VM_PRIVATE_IP>|${APP_IP}|g" web_sample_code/index.html
+      - name: Deploy Web VM
+        uses: appleboy/ssh-action@v0.1.8
+        with:
+          host: ${{ env.WEB_IP }}
+          username: ${{ secrets.AZURE_VM_USERNAME }}
+          password: ${{ secrets.AZURE_VM_PASSWORD }}
+          port: 22
+          script: |
+            mkdir -p ~/web_app
+            scp -r ./web_sample_code/* ~/web_app/
+            sudo apt-get update
+            sudo apt-get install -y python3 python3-pip
+            cd ~/web_app
+            nohup python3 app.py &
+      - name: Deploy App VM
+        uses: appleboy/ssh-action@v0.1.8
+        with:
+          host: ${{ env.APP_IP }}
+          username: ${{ secrets.AZURE_VM_USERNAME }}
+          password: ${{ secrets.AZURE_VM_PASSWORD }}
+          port: 22
+          script: |
+            mkdir -p ~/app_backend
+            scp -r ./app_sample_code/* ~/app_backend/
+            sudo apt-get update
+            sudo apt-get install -y python3 python3-pip
+            cd ~/app_backend
+            pip3 install -r requirements.txt
+            nohup python3 backend.py &
