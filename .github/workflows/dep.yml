@@ -46,7 +46,7 @@ jobs:
           port: 22
           script: |
             mkdir -p ~/web_app
-            scp -r ./web_sample_code/* ~/web_app/
+            scp -r ./frontend/* ~/webapp/
             sudo apt-get update
             sudo apt-get install -y python3 python3-pip
             cd ~/web_app
@@ -62,8 +62,8 @@ jobs:
           port: 22
           script: |
             mkdir -p ~/app_backend
-            scp -r ./app_sample_code/* ~/app_backend/
-            cd ~/app_backend
+            scp -r ./backend/* ~/app/
+            cd ~/app
             export DB_PASSWORD='${{ secrets.DB_PASSWORD }}'
             export DB_HOST='${{ env.DB_IP }}'
             export DB_USER='sa'
