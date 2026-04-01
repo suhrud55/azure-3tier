@@ -3,9 +3,9 @@ variable "location" {}
 variable "admin_username" {}
 variable "admin_password" {}
 
-variable "web_vm_size" { default = "Standard_B1s" }
-variable "app_vm_size" { default = "Standard_B1s" }
-variable "db_vm_size"  { default = "Standard_B1s" }
+variable "web_vm_size" { default = "Standard_D2s_v3" }
+variable "app_vm_size" { default = "Standard_D2s_v3" }
+variable "db_vm_size"  { default = "Standard_D2s_v3" }
 
 variable "vnet_cidr"       { default = "10.0.0.0/16" }
 variable "web_subnet_cidr" { default = "10.0.1.0/24" }
