@@ -1,7 +1,7 @@
 resource "azurerm_public_ip" "web_ip" {
   name                = "web-ip"
   location            = var.location
-  resource_group_name = var.resource_group_name
+  resource_group_name = azurerem_resource_group.rg.name
   allocation_method   = "Static"
 }
 
@@ -61,7 +61,7 @@ resource "null_resource" "web_app_deploy" {
   }
 
   provisioner "file" {
-    source      = "web_sample_code/"
+    source      = "frontend/"
     destination = "/home/${var.admin_username}/web_app/"
   }
 
