@@ -4,16 +4,13 @@ trigger:
 pool:
   vmImage: 'ubuntu-latest'
 
-variables:
-  VM_USER: 'azureuser'
-  VM_PASS: 'YourStrongPassword123!'
-
 steps:
 
 # 1️⃣ Checkout code
 - checkout: self
 
- - script: |
+# 2️⃣ Install Terraform (manual)
+- script: |
     wget https://releases.hashicorp.com/terraform/1.5.0/terraform_1.5.0_linux_amd64.zip
     unzip terraform_1.5.0_linux_amd64.zip
     sudo mv terraform /usr/local/bin/
@@ -24,7 +21,9 @@ steps:
 - script: |
     cd terraform
     terraform init
-    terraform apply -auto-approve
+    terraform apply -auto-approve \
+      -var="admin_username=$(VM_USER)" \
+      -var="admin_password=$(VM_PASS)"
   displayName: 'Terraform Apply'
 
 # 4️⃣ Get VM IPs
@@ -48,7 +47,7 @@ steps:
     sed -i "s|<APP_VM_PRIVATE_IP>|$(APP_IP)|g" frontend/index.html
   displayName: 'Update Frontend'
 
-# 6️⃣ Install sshpass (for SSH automation)
+# 6️⃣ Install sshpass
 - script: |
     sudo apt-get update
     sudo apt-get install -y sshpass
@@ -65,7 +64,7 @@ steps:
     "
   displayName: 'Setup Database VM'
 
-# 8️⃣ Deploy Backend (App VM)
+# 8️⃣ Deploy Backend
 - script: |
     sshpass -p $(VM_PASS) scp -o StrictHostKeyChecking=no -r backend/* $(VM_USER)@$(APP_IP):~/backend/
 
@@ -78,7 +77,7 @@ steps:
     "
   displayName: 'Deploy Backend'
 
-# 9️⃣ Deploy Frontend (Web VM)
+# 9️⃣ Deploy Frontend
 - script: |
     sshpass -p $(VM_PASS) scp -o StrictHostKeyChecking=no -r frontend/* $(VM_USER)@$(WEB_IP):~/frontend/
 
@@ -94,7 +93,7 @@ steps:
 - script: |
     echo "======================================"
     echo "Deployment Complete 🚀"
-    echo "Open in browser:"
+    echo "Open your app:"
     echo "http://$(WEB_IP):3000"
     echo "======================================"
   displayName: 'Show App URL'
