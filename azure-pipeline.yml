@@ -4,15 +4,6 @@ trigger:
 pool:
   vmImage: 'ubuntu-latest'
 
-variables:
-  # Set these as pipeline variables or secret variables
-  VM_USER: '<your-vm-username>'
-  VM_PASS: '<your-vm-password>'
-  AZURE_SP_APP_ID: '<service-principal-app-id>'
-  AZURE_SP_SECRET: '<service-principal-password>'
-  AZURE_TENANT_ID: '<tenant-id>'
-  AZURE_SUBSCRIPTION_ID: '<subscription-id>'
-
 steps:
 
 # 1️⃣ Checkout repo
