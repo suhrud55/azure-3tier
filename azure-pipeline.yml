@@ -29,7 +29,7 @@ steps:
     # Verify installation
     terraform -version
   displayName: 'Install Terraform'
-  displayName: 'Install Terraform'
+  
 
 # 3️⃣ Azure Login using Service Principal
 - script: |
