@@ -13,10 +13,12 @@ steps:
 # 1️⃣ Checkout code
 - checkout: self
 
-# 2️⃣ Install Terraform
-- task: TerraformInstaller@1
-  inputs:
-    terraformVersion: '1.5.0'
+ - script: |
+    wget https://releases.hashicorp.com/terraform/1.5.0/terraform_1.5.0_linux_amd64.zip
+    unzip terraform_1.5.0_linux_amd64.zip
+    sudo mv terraform /usr/local/bin/
+    terraform -version
+  displayName: 'Install Terraform'
 
 # 3️⃣ Terraform Apply (Create Infra)
 - script: |
