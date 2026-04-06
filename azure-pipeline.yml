@@ -9,34 +9,31 @@ steps:
 # 1️⃣ Checkout code
 - checkout: self
 
-# 2️⃣ Install Terraform
+# 2️⃣ Install Terraform (manual)
 - script: |
     sudo apt-get update
-    sudo apt-get install -y unzip wget
+    sudo apt-get install -y unzip
 
     wget https://releases.hashicorp.com/terraform/1.5.0/terraform_1.5.0_linux_amd64.zip
-    unzip terraform_1.5.0_linux_amd64.zip
-    sudo mv terraform /usr/local/bin/
+
+    unzip -o terraform_1.5.0_linux_amd64.zip
+    mkdir tfbin
+    unzip terraform_1.5.0_linux_amd64.zip -d tfbin
+
+    sudo mv -f terraform /usr/local/bin/
+    sudo mv tfbin/terraform /usr/local/bin/
+
     terraform -version
   displayName: 'Install Terraform'
 
-# 3️⃣ Terraform Init & Apply (using Azure DevOps service connection)
-- task: TerraformCLI@0
-  displayName: 'Terraform Init'
-  inputs:
-    provider: 'azurerm'
-    command: 'init'
-    workingDirectory: 'terraform'
-    azureSubscription: '<Your-Service-Connection-Name>'
-
-- task: TerraformCLI@0
+# 3️⃣ Terraform Apply (Create Infra)
+- script: |
+    cd terraform
+    terraform init
+    terraform apply -auto-approve \
+      -var="admin_username=$(VM_USER)" \
+      -var="admin_password=$(VM_PASS)"
   displayName: 'Terraform Apply'
-  inputs:
-    provider: 'azurerm'
-    command: 'apply'
-    workingDirectory: 'terraform'
-    environmentServiceNameAzureRM: '<Your-Service-Connection-Name>'
-    args: '-auto-approve -var="admin_username=$(VM_USER)" -var="admin_password=$(VM_PASS)"'
 
 # 4️⃣ Get VM IPs
 - script: |
@@ -108,4 +105,3 @@ steps:
     echo "Open your app:"
     echo "http://$(WEB_IP):3000"
     echo "======================================"
-  displayName: 'Show App URL'
