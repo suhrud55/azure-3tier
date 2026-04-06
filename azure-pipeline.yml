@@ -5,7 +5,8 @@ pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  TF_VERSION: '1.5.0'
+  VM_USER: 'azureuser'
+  VM_PASS: 'YourStrongPassword123!'
 
 steps:
 
@@ -15,95 +16,83 @@ steps:
 # 2️⃣ Install Terraform
 - task: TerraformInstaller@1
   inputs:
-    terraformVersion: '$(TF_VERSION)'
+    terraformVersion: '1.5.0'
 
-# 3️⃣ Azure Login (Service Connection REQUIRED)
-- task: AzureCLI@2
-  inputs:
-    azureSubscription: 'your-service-connection-name'
-    scriptType: 'bash'
-    scriptLocation: 'inlineScript'
-    inlineScript: |
-      echo "Logged into Azure"
-
-# 4️⃣ Terraform Init, Plan, Apply
+# 3️⃣ Terraform Apply (Create Infra)
 - script: |
+    cd terraform
     terraform init
-    terraform plan -out=tfplan
-    terraform apply -auto-approve tfplan
-  displayName: 'Terraform Deploy'
+    terraform apply -auto-approve
+  displayName: 'Terraform Apply'
 
-# 5️⃣ Get VM IPs (IMPORTANT FIX)
+# 4️⃣ Get VM IPs
 - script: |
+    cd terraform
     WEB_IP=$(terraform output -raw web_public_ip)
     APP_IP=$(terraform output -raw app_private_ip)
     DB_IP=$(terraform output -raw db_private_ip)
+
+    echo "WEB_IP=$WEB_IP"
+    echo "APP_IP=$APP_IP"
+    echo "DB_IP=$DB_IP"
 
     echo "##vso[task.setvariable variable=WEB_IP]$WEB_IP"
     echo "##vso[task.setvariable variable=APP_IP]$APP_IP"
     echo "##vso[task.setvariable variable=DB_IP]$DB_IP"
   displayName: 'Get VM IPs'
 
-# 6️⃣ Update frontend
+# 5️⃣ Update frontend with backend IP
 - script: |
     sed -i "s|<APP_VM_PRIVATE_IP>|$(APP_IP)|g" frontend/index.html
-  displayName: 'Update frontend'
+  displayName: 'Update Frontend'
 
-# 7️⃣ Deploy Web VM (frontend)
-- task: SSH@0
-  inputs:
-    sshEndpoint: 'web-vm-connection'   # create in service connections
-    runOptions: 'commands'
-    commands: |
-      mkdir -p ~/web_app
-      echo "Uploading frontend..."
-  displayName: 'Prepare Web VM'
-
+# 6️⃣ Install sshpass (for SSH automation)
 - script: |
-    scp -r frontend/* $(AZURE_VM_USERNAME)@$(WEB_IP):~/web_app/
-  displayName: 'Copy frontend files'
+    sudo apt-get update
+    sudo apt-get install -y sshpass
+  displayName: 'Install sshpass'
 
-- task: SSH@0
-  inputs:
-    sshEndpoint: 'web-vm-connection'
-    runOptions: 'commands'
-    commands: |
-      sudo apt-get update
-      sudo apt-get install -y python3 python3-pip
-      cd ~/web_app
-      nohup python3 app.py &
-  displayName: 'Run Web App'
-
-# 8️⃣ Deploy App VM (backend)
+# 7️⃣ Setup Database VM (SQLite)
 - script: |
-    scp -r backend/* $(AZURE_VM_USERNAME)@$(APP_IP):~/app_backend/
-  displayName: 'Copy backend files'
+    sshpass -p $(VM_PASS) scp -o StrictHostKeyChecking=no database/db_script.sql $(VM_USER)@$(DB_IP):~/db_script.sql
 
-- task: SSH@0
-  inputs:
-    sshEndpoint: 'app-vm-connection'
-    runOptions: 'commands'
-    commands: |
-      mkdir -p ~/app_backend
-      cd ~/app_backend
-      export DB_PASSWORD=$(DB_PASSWORD)
-      export DB_HOST=$(DB_IP)
-      export DB_USER=sa
-      pip3 install -r requirements.txt
-      nohup python3 backend.py &
-  displayName: 'Run Backend'
+    sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(DB_IP) "
+      sudo apt update &&
+      sudo apt install -y sqlite3 &&
+      sqlite3 test.db < ~/db_script.sql
+    "
+  displayName: 'Setup Database VM'
 
-# 9️⃣ Setup Database
+# 8️⃣ Deploy Backend (App VM)
 - script: |
-    scp db_script.sql $(AZURE_VM_USERNAME)@$(DB_IP):~/db_script.sql
-  displayName: 'Copy DB Script'
+    sshpass -p $(VM_PASS) scp -o StrictHostKeyChecking=no -r backend/* $(VM_USER)@$(APP_IP):~/backend/
 
-- task: SSH@0
-  inputs:
-    sshEndpoint: 'db-vm-connection'
-    runOptions: 'commands'
-    commands: |
-      sudo apt-get update
-      sudo apt-get install -y mssql-tools unixodbc-dev
-      sqlcmd -S localhost -U sa -P $(DB_PASSWORD) -i ~/db_script.sql
-  displayName: 'Setup DB'
+    sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(APP_IP) "
+      sudo apt update &&
+      sudo apt install -y python3-pip sqlite3 &&
+      cd ~/backend &&
+      pip3 install -r requirements.txt &&
+      nohup python3 backend.py > backend.log 2>&1 &
+    "
+  displayName: 'Deploy Backend'
+
+# 9️⃣ Deploy Frontend (Web VM)
+- script: |
+    sshpass -p $(VM_PASS) scp -o StrictHostKeyChecking=no -r frontend/* $(VM_USER)@$(WEB_IP):~/frontend/
+
+    sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(WEB_IP) "
+      sudo apt update &&
+      sudo apt install -y python3 &&
+      cd ~/frontend &&
+      nohup python3 app.py > frontend.log 2>&1 &
+    "
+  displayName: 'Deploy Frontend'
+
+# 🔟 Final Output
+- script: |
+    echo "======================================"
+    echo "Deployment Complete 🚀"
+    echo "Open in browser:"
+    echo "http://$(WEB_IP):3000"
+    echo "======================================"
+  displayName: 'Show App URL'

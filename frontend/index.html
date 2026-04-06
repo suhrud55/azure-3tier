@@ -1,42 +1,11 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>3-Tier App Sample</title>
-    <link rel="stylesheet" href="style.css">
-</head>
-<body>
-    <h1>Welcome to the 3-Tier App</h1>
-    <h2>Users in Database:</h2>
-    <ul id="user-list">
-        <!-- Users will be dynamically inserted here -->
-    </ul>
+<h1>Frontend</h1>
+<button onclick="callBackend()">Call Backend</button>
+<p id="output"></p>
 
-    <script>
-        // Replace this with your backend IP set by GitHub Actions
-        const backendIP = "<APP_VM_PRIVATE_IP>";
-        const backendPort = 5000; // Port your backend.py runs on
-
-        async function fetchUsers() {
-            try {
-                const response = await fetch(`http://${backendIP}:${backendPort}/users`);
-                const data = await response.json();
-                const userList = document.getElementById('user-list');
-                userList.innerHTML = ''; // Clear existing
-
-                data.forEach(user => {
-                    const li = document.createElement('li');
-                    li.textContent = `${user.Id}: ${user.Name} (${user.Email})`;
-                    userList.appendChild(li);
-                });
-            } catch (err) {
-                console.error('Error fetching users:', err);
-                document.getElementById('user-list').textContent = 'Unable to fetch users';
-            }
-        }
-
-        // Fetch users when page loads
-        fetchUsers();
-    </script>
-</body>
-</html>
+<script>
+function callBackend() {
+  fetch("http://<APP_VM_PRIVATE_IP>:5000")
+    .then(res => res.text())
+    .then(data => document.getElementById("output").innerText = data);
+}
+</script>
