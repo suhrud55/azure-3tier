@@ -1,0 +1,109 @@
+trigger:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  TF_VERSION: '1.5.0'
+
+steps:
+
+# 1️⃣ Checkout code
+- checkout: self
+
+# 2️⃣ Install Terraform
+- task: TerraformInstaller@1
+  inputs:
+    terraformVersion: '$(TF_VERSION)'
+
+# 3️⃣ Azure Login (Service Connection REQUIRED)
+- task: AzureCLI@2
+  inputs:
+    azureSubscription: 'your-service-connection-name'
+    scriptType: 'bash'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      echo "Logged into Azure"
+
+# 4️⃣ Terraform Init, Plan, Apply
+- script: |
+    terraform init
+    terraform plan -out=tfplan
+    terraform apply -auto-approve tfplan
+  displayName: 'Terraform Deploy'
+
+# 5️⃣ Get VM IPs (IMPORTANT FIX)
+- script: |
+    WEB_IP=$(terraform output -raw web_public_ip)
+    APP_IP=$(terraform output -raw app_private_ip)
+    DB_IP=$(terraform output -raw db_private_ip)
+
+    echo "##vso[task.setvariable variable=WEB_IP]$WEB_IP"
+    echo "##vso[task.setvariable variable=APP_IP]$APP_IP"
+    echo "##vso[task.setvariable variable=DB_IP]$DB_IP"
+  displayName: 'Get VM IPs'
+
+# 6️⃣ Update frontend
+- script: |
+    sed -i "s|<APP_VM_PRIVATE_IP>|$(APP_IP)|g" frontend/index.html
+  displayName: 'Update frontend'
+
+# 7️⃣ Deploy Web VM (frontend)
+- task: SSH@0
+  inputs:
+    sshEndpoint: 'web-vm-connection'   # create in service connections
+    runOptions: 'commands'
+    commands: |
+      mkdir -p ~/web_app
+      echo "Uploading frontend..."
+  displayName: 'Prepare Web VM'
+
+- script: |
+    scp -r frontend/* $(AZURE_VM_USERNAME)@$(WEB_IP):~/web_app/
+  displayName: 'Copy frontend files'
+
+- task: SSH@0
+  inputs:
+    sshEndpoint: 'web-vm-connection'
+    runOptions: 'commands'
+    commands: |
+      sudo apt-get update
+      sudo apt-get install -y python3 python3-pip
+      cd ~/web_app
+      nohup python3 app.py &
+  displayName: 'Run Web App'
+
+# 8️⃣ Deploy App VM (backend)
+- script: |
+    scp -r backend/* $(AZURE_VM_USERNAME)@$(APP_IP):~/app_backend/
+  displayName: 'Copy backend files'
+
+- task: SSH@0
+  inputs:
+    sshEndpoint: 'app-vm-connection'
+    runOptions: 'commands'
+    commands: |
+      mkdir -p ~/app_backend
+      cd ~/app_backend
+      export DB_PASSWORD=$(DB_PASSWORD)
+      export DB_HOST=$(DB_IP)
+      export DB_USER=sa
+      pip3 install -r requirements.txt
+      nohup python3 backend.py &
+  displayName: 'Run Backend'
+
+# 9️⃣ Setup Database
+- script: |
+    scp db_script.sql $(AZURE_VM_USERNAME)@$(DB_IP):~/db_script.sql
+  displayName: 'Copy DB Script'
+
+- task: SSH@0
+  inputs:
+    sshEndpoint: 'db-vm-connection'
+    runOptions: 'commands'
+    commands: |
+      sudo apt-get update
+      sudo apt-get install -y mssql-tools unixodbc-dev
+      sqlcmd -S localhost -U sa -P $(DB_PASSWORD) -i ~/db_script.sql
+  displayName: 'Setup DB'
