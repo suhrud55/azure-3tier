@@ -9,33 +9,254 @@ steps:
 # 1️⃣ Checkout code
 - checkout: self
 
-# 2️⃣ Install Terraform (manual)
+# 2️⃣ Install Terraform
 - script: |
     sudo apt-get update
-    sudo apt-get install -y unzip
+    sudo apt-get install -y unzip wget
 
     wget https://releases.hashicorp.com/terraform/1.5.0/terraform_1.5.0_linux_amd64.zip
-
-    mkdir tfbin
-    unzip terraform_1.5.0_linux_amd64.zip -d tfbin
-
-    sudo mv tfbin/terraform /usr/local/bin/
-
+    unzip terraform_1.5.0_linux_amd64.zip
+    sudo mv terraform /usr/local/bin/
     terraform -version
   displayName: 'Install Terraform'
 
-# 3️⃣ Terraform Apply (Create Infra) with Azure SP credentials
+# 3️⃣ Terraform Init & Apply (using Azure DevOps service connection)
+- task: TerraformCLI@0
+  displayName: 'Terraform Init'
+  inputs:
+    provider: 'azurerm'
+    command: 'init'
+    workingDirectory: 'terraform'
+    azureSubscription: '<Your-Service-Connection-Name>'
+
+- task: TerraformCLI@0
+  displayName: 'Terraform Apply'
+  inputs:
+    provider: 'azurerm'
+    command: 'apply'
+    workingDirectory: 'terraform'
+    environmentServiceNameAzureRM: '<Your-Service-Connection-Name>'
+    args: '-auto-approve -var="admin_username=$(VM_USER)" -var="admin_password=$(VM_PASS)"'
+
+# 4️⃣ Get VM IPs
 - script: |
     cd terraform
-    terraform init
-    terraform apply -auto-approve \
-      -var="subscription_id=$(subscriptionId)" \
-      -var="client_id=$(clientId)" \
-      -var="client_secret=$(clientSecret)" \
-      -var="tenant_id=$(tenantId)" \
-      -var="admin_username=$(VM_USER)" \
-      -var="admin_password=$(VM_PASS)"
+    WEB_IP=$(terraform output -raw web_public_ip)
+    APP_IP=$(terraform output -raw app_private_ip)
+    DB_IP=$(terraform output -raw db_private_ip)
+
+    echo "WEB_IP=$WEB_IP"
+    echo "APP_IP=$APP_IP"
+    echo "DB_IP=$DB_IP"
+
+    echo "##vso[task.setvariable variable=WEB_IP]$WEB_IP"
+    echo "##vso[task.setvariable variable=APP_IP]$APP_IP"
+    echo "##vso[task.setvariable variable=DB_IP]$DB_IP"
+  displayName: 'Get VM IPs'
+
+# 5️⃣ Update frontend with backend IP
+- script: |
+    sed -i "s|<APP_VM_PRIVATE_IP>|$(APP_IP)|g" frontend/index.html
+  displayName: 'Update Frontend'
+
+# 6️⃣ Install sshpass
+- script: |
+    sudo apt-get update
+    sudo apt-get install -y sshpass
+  displayName: 'Install sshpass'
+
+# 7️⃣ Setup Database VM (SQLite)
+- script: |
+    sshpass -p $(VM_PASS) scp -o StrictHostKeyChecking=no database/db_script.sql $(VM_USER)@$(DB_IP):~/db_script.sql
+
+    sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(DB_IP) "
+      sudo apt update &&
+      sudo apt install -y sqlite3 &&
+      sqlite3 test.db < ~/db_script.sql
+    "
+  displayName: 'Setup Database VM'
+
+# 8️⃣ Deploy Backend
+- script: |
+    sshpass -p $(VM_PASS) scp -o StrictHostKeyChecking=no -r backend/* $(VM_USER)@$(APP_IP):~/backend/
+
+    sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(APP_IP) "
+      sudo apt update &&
+      sudo apt install -y python3-pip sqlite3 &&
+      cd ~/backend &&
+      pip3 install -r requirements.txt &&
+      nohup python3 backend.py > backend.log 2>&1 &
+    "
+  displayName: 'Deploy Backend'
+
+# 9️⃣ Deploy Frontend
+- script: |
+    sshpass -p $(VM_PASS) scp -o StrictHostKeyChecking=no -r frontend/* $(VM_USER)@$(WEB_IP):~/frontend/
+
+    sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(WEB_IP) "
+      sudo apt update &&
+      sudo apt install -y python3 &&
+      cd ~/frontend &&
+      nohup python3 app.py > frontend.log 2>&1 &
+    "
+  displayName: 'Deploy Frontend'
+
+# 🔟 Final Output
+- script: |
+    echo "======================================"
+    echo "Deployment Complete 🚀"
+    echo "Open your app:"
+    echo "http://$(WEB_IP):3000"
+    echo "======================================"
+  displayName: 'Show App URL'trigger:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+
+# 1️⃣ Checkout code
+- checkout: self
+
+# 2️⃣ Install Terraform
+- script: |
+    sudo apt-get update
+    sudo apt-get install -y unzip wget
+
+    wget https://releases.hashicorp.com/terraform/1.5.0/terraform_1.5.0_linux_amd64.zip
+    unzip terraform_1.5.0_linux_amd64.zip
+    sudo mv terraform /usr/local/bin/
+    terraform -version
+  displayName: 'Install Terraform'
+
+# 3️⃣ Terraform Init & Apply (using Azure DevOps service connection)
+- task: TerraformCLI@0
+  displayName: 'Terraform Init'
+  inputs:
+    provider: 'azurerm'
+    command: 'init'
+    workingDirectory: 'terraform'
+    azureSubscription: '<Your-Service-Connection-Name>'
+
+- task: TerraformCLI@0
   displayName: 'Terraform Apply'
+  inputs:
+    provider: 'azurerm'
+    command: 'apply'
+    workingDirectory: 'terraform'
+    environmentServiceNameAzureRM: '<Your-Service-Connection-Name>'
+    args: '-auto-approve -var="admin_username=$(VM_USER)" -var="admin_password=$(VM_PASS)"'
+
+# 4️⃣ Get VM IPs
+- script: |
+    cd terraform
+    WEB_IP=$(terraform output -raw web_public_ip)
+    APP_IP=$(terraform output -raw app_private_ip)
+    DB_IP=$(terraform output -raw db_private_ip)
+
+    echo "WEB_IP=$WEB_IP"
+    echo "APP_IP=$APP_IP"
+    echo "DB_IP=$DB_IP"
+
+    echo "##vso[task.setvariable variable=WEB_IP]$WEB_IP"
+    echo "##vso[task.setvariable variable=APP_IP]$APP_IP"
+    echo "##vso[task.setvariable variable=DB_IP]$DB_IP"
+  displayName: 'Get VM IPs'
+
+# 5️⃣ Update frontend with backend IP
+- script: |
+    sed -i "s|<APP_VM_PRIVATE_IP>|$(APP_IP)|g" frontend/index.html
+  displayName: 'Update Frontend'
+
+# 6️⃣ Install sshpass
+- script: |
+    sudo apt-get update
+    sudo apt-get install -y sshpass
+  displayName: 'Install sshpass'
+
+# 7️⃣ Setup Database VM (SQLite)
+- script: |
+    sshpass -p $(VM_PASS) scp -o StrictHostKeyChecking=no database/db_script.sql $(VM_USER)@$(DB_IP):~/db_script.sql
+
+    sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(DB_IP) "
+      sudo apt update &&
+      sudo apt install -y sqlite3 &&
+      sqlite3 test.db < ~/db_script.sql
+    "
+  displayName: 'Setup Database VM'
+
+# 8️⃣ Deploy Backend
+- script: |
+    sshpass -p $(VM_PASS) scp -o StrictHostKeyChecking=no -r backend/* $(VM_USER)@$(APP_IP):~/backend/
+
+    sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(APP_IP) "
+      sudo apt update &&
+      sudo apt install -y python3-pip sqlite3 &&
+      cd ~/backend &&
+      pip3 install -r requirements.txt &&
+      nohup python3 backend.py > backend.log 2>&1 &
+    "
+  displayName: 'Deploy Backend'
+
+# 9️⃣ Deploy Frontend
+- script: |
+    sshpass -p $(VM_PASS) scp -o StrictHostKeyChecking=no -r frontend/* $(VM_USER)@$(WEB_IP):~/frontend/
+
+    sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(WEB_IP) "
+      sudo apt update &&
+      sudo apt install -y python3 &&
+      cd ~/frontend &&
+      nohup python3 app.py > frontend.log 2>&1 &
+    "
+  displayName: 'Deploy Frontend'
+
+# 🔟 Final Output
+- script: |
+    echo "======================================"
+    echo "Deployment Complete 🚀"
+    echo "Open your app:"
+    echo "http://$(WEB_IP):3000"
+    echo "======================================"
+  displayName: 'Show App URL'trigger:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+
+# 1️⃣ Checkout code
+- checkout: self
+
+# 2️⃣ Install Terraform
+- script: |
+    sudo apt-get update
+    sudo apt-get install -y unzip wget
+
+    wget https://releases.hashicorp.com/terraform/1.5.0/terraform_1.5.0_linux_amd64.zip
+    unzip terraform_1.5.0_linux_amd64.zip
+    sudo mv terraform /usr/local/bin/
+    terraform -version
+  displayName: 'Install Terraform'
+
+# 3️⃣ Terraform Init & Apply (using Azure DevOps service connection)
+- task: TerraformCLI@0
+  displayName: 'Terraform Init'
+  inputs:
+    provider: 'azurerm'
+    command: 'init'
+    workingDirectory: 'terraform'
+    azureSubscription: '<Your-Service-Connection-Name>'
+
+- task: TerraformCLI@0
+  displayName: 'Terraform Apply'
+  inputs:
+    provider: 'azurerm'
+    command: 'apply'
+    workingDirectory: 'terraform'
+    environmentServiceNameAzureRM: '<Your-Service-Connection-Name>'
+    args: '-auto-approve -var="admin_username=$(VM_USER)" -var="admin_password=$(VM_PASS)"'
 
 # 4️⃣ Get VM IPs
 - script: |
