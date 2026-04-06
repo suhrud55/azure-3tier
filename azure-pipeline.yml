@@ -5,33 +5,49 @@ pool:
   vmImage: 'ubuntu-latest'
 
 variables:
+  # Set these as pipeline variables or secret variables
   VM_USER: '<your-vm-username>'
   VM_PASS: '<your-vm-password>'
+  AZURE_SP_APP_ID: '<service-principal-app-id>'
+  AZURE_SP_SECRET: '<service-principal-password>'
+  AZURE_TENANT_ID: '<tenant-id>'
+  AZURE_SUBSCRIPTION_ID: '<subscription-id>'
 
 steps:
 
 # 1️⃣ Checkout repo
 - checkout: self
 
-# 2️⃣ Terraform Init & Apply using Azure DevOps service connection
-- task: TerraformCLI@0
-  displayName: 'Terraform Init'
-  inputs:
-    provider: 'azurerm'
-    command: 'init'
-    workingDirectory: 'terraform'
-    environmentServiceNameAzureRM: '<Your-Service-Connection-Name>'
+# 2️⃣ Install Terraform manually
+- script: |
+    sudo apt-get update
+    sudo apt-get install -y unzip wget
+    wget https://releases.hashicorp.com/terraform/1.5.0/terraform_1.5.0_linux_amd64.zip
+    unzip -o terraform_1.5.0_linux_amd64.zip
+    sudo mv terraform /usr/local/bin/
+    terraform -version
+  displayName: 'Install Terraform'
 
-- task: TerraformCLI@0
+# 3️⃣ Azure Login using Service Principal
+- script: |
+    echo "Logging in to Azure..."
+    az login --service-principal \
+      -u $(AZURE_SP_APP_ID) \
+      -p $(AZURE_SP_SECRET) \
+      --tenant $(AZURE_TENANT_ID)
+    az account set --subscription $(AZURE_SUBSCRIPTION_ID)
+  displayName: 'Azure Login'
+
+# 4️⃣ Terraform Init & Apply
+- script: |
+    cd terraform
+    terraform init
+    terraform apply -auto-approve \
+      -var="admin_username=$(VM_USER)" \
+      -var="admin_password=$(VM_PASS)"
   displayName: 'Terraform Apply'
-  inputs:
-    provider: 'azurerm'
-    command: 'apply'
-    workingDirectory: 'terraform'
-    environmentServiceNameAzureRM: 'azure-connect'
-    args: '-auto-approve -var="admin_username=$(VM_USER)" -var="admin_password=$(VM_PASS)"'
 
-# 3️⃣ Export Terraform Outputs (VM IPs) to Variables
+# 5️⃣ Get Terraform Outputs (VM IPs)
 - script: |
     cd terraform
     WEB_IP=$(terraform output -raw web_public_ip)
@@ -43,18 +59,18 @@ steps:
     echo "##vso[task.setvariable variable=DB_IP]$DB_IP"
   displayName: 'Get VM IP Outputs'
 
-# 4️⃣ Update Frontend Config with Backend App IP
+# 6️⃣ Update Frontend Config with Backend IP
 - script: |
     sed -i "s|<APP_VM_PRIVATE_IP>|$(APP_IP)|g" frontend/index.html
   displayName: 'Update Frontend Config'
 
-# 5️⃣ Install sshpass for SSH deployment
+# 7️⃣ Install sshpass
 - script: |
     sudo apt-get update
     sudo apt-get install -y sshpass
   displayName: 'Install sshpass'
 
-# 6️⃣ Setup Database VM
+# 8️⃣ Setup Database VM
 - script: |
     sshpass -p $(VM_PASS) scp -o StrictHostKeyChecking=no database/db_script.sql $(VM_USER)@$(DB_IP):~/db_script.sql
     sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(DB_IP) "
@@ -64,7 +80,7 @@ steps:
     "
   displayName: 'Setup Database VM'
 
-# 7️⃣ Deploy Backend Code
+# 9️⃣ Deploy Backend
 - script: |
     sshpass -p $(VM_PASS) scp -o StrictHostKeyChecking=no -r backend/* $(VM_USER)@$(APP_IP):~/backend/
     sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(APP_IP) "
@@ -76,7 +92,7 @@ steps:
     "
   displayName: 'Deploy Backend'
 
-# 8️⃣ Deploy Frontend Code
+# 🔟 Deploy Frontend
 - script: |
     sshpass -p $(VM_PASS) scp -o StrictHostKeyChecking=no -r frontend/* $(VM_USER)@$(WEB_IP):~/frontend/
     sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(WEB_IP) "
@@ -87,7 +103,7 @@ steps:
     "
   displayName: 'Deploy Frontend'
 
-# 9️⃣ Final Output
+# 1️⃣1️⃣ Show Final Output
 - script: |
     echo "======================================"
     echo "Deployment Complete 🚀"
