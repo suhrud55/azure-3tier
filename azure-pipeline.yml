@@ -13,9 +13,15 @@ steps:
 - script: |
     sudo apt-get update
     sudo apt-get install -y unzip wget
+
     wget https://releases.hashicorp.com/terraform/1.5.0/terraform_1.5.0_linux_amd64.zip
+
+    # Remove old binary if exists
+    sudo rm -f /usr/local/bin/terraform
+
     unzip -o terraform_1.5.0_linux_amd64.zip
     sudo mv terraform /usr/local/bin/
+
     terraform -version
   displayName: 'Install Terraform'
 
