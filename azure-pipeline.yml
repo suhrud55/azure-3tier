@@ -16,9 +16,10 @@ steps:
 
     wget https://releases.hashicorp.com/terraform/1.5.0/terraform_1.5.0_linux_amd64.zip
 
-    unzip -o terraform_1.5.0_linux_amd64.zip
+    mkdir tfbin
+    unzip terraform_1.5.0_linux_amd64.zip -d tfbin
 
-    sudo mv -f terraform /usr/local/bin/
+    sudo mv tfbin/terraform /usr/local/bin/
 
     terraform -version
   displayName: 'Install Terraform'
