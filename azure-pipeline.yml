@@ -79,7 +79,7 @@ steps:
     sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(DB_IP) "
       sudo apt update &&
       sudo apt install -y sqlite3 &&
-      sqlite3 test.db < ~/db_script.sql
+      sqlite3 test.db < ~/database/db_script.sql
     "
   displayName: 'Setup Database VM'
 
@@ -90,7 +90,7 @@ steps:
       sudo apt update &&
       sudo apt install -y python3-pip sqlite3 &&
       cd ~/backend &&
-      pip3 install -r requirements.txt &&
+      pip3 install -r backend/requirements.txt &&
       nohup python3 backend.py > backend.log 2>&1 &
     "
   displayName: 'Deploy Backend'
