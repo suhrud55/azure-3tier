@@ -39,31 +39,20 @@ steps:
     az account set --subscription $(AZURE_SUBSCRIPTION_ID)
   displayName: 'Azure Login'
 
-# 4️⃣ Terraform Apply
-- script: |
-    cd terraform
-    terraform init
-    terraform apply -auto-approve \
-      -var="admin_username=$(VM_USER)" \
-      -var="admin_password=$(VM_PASS)"
-  displayName: 'Terraform Apply'
+#
 # 5️⃣ Get Outputs
 - script: |
     cd terraform
+    terraform init
 
     WEB_IP=$(terraform output -raw web_public_ip)
     APP_IP=$(terraform output -raw app_private_ip)
     DB_IP=$(terraform output -raw db_private_ip)
 
-    echo "WEB_IP=$WEB_IP"
-    echo "APP_IP=$APP_IP"
-    echo "DB_IP=$DB_IP"
-
     echo "##vso[task.setvariable variable=WEB_IP]$WEB_IP"
     echo "##vso[task.setvariable variable=APP_IP]$APP_IP"
     echo "##vso[task.setvariable variable=DB_IP]$DB_IP"
-  displayName: 'Get VM IPs'
-
+  displayName: 'Get Terraform Outputs'
 # 6️⃣ Update Frontend
 - script: |
     sed -i "s|<APP_VM_PRIVATE_IP>|$(APP_IP)|g" frontend/index.html
@@ -79,13 +68,17 @@ steps:
 - script: |
     echo "Setting up DB via Web VM..."
 
+    # Step 1: Copy file to Web VM
+    sshpass -p $(VM_PASS) scp -o StrictHostKeyChecking=no database/db_script.sql $(VM_USER)@$(WEB_IP):~/db_script.sql
+
+    # Step 2: SSH into Web VM
     sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(WEB_IP) << EOF
 
       sudo apt update
       sudo apt install -y sshpass
 
-      echo "Copying DB script..."
-      sshpass -p $(VM_PASS) scp -o StrictHostKeyChecking=no database/db_script.sql $(VM_USER)@$(DB_IP):~/db_script.sql
+      echo "Copying DB script to DB VM..."
+      sshpass -p $(VM_PASS) scp -o StrictHostKeyChecking=no ~/db_script.sql $(VM_USER)@$(DB_IP):~/db_script.sql
 
       echo "Executing DB script..."
       sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(DB_IP) "
@@ -96,7 +89,7 @@ steps:
 
     EOF
   displayName: 'Setup Database VM'
-# 9️⃣ Deploy Backend
+  # 9️⃣ Deploy Backend
 - script: |
     echo "Deploying backend..."
 
