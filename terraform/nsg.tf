@@ -3,8 +3,8 @@
 # Network Security Group
 resource "azurerm_network_security_group" "nsg" {
   name                = "nsg-3tier"
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
+  location            = data.azurerm_resource_group.rg.location
+  resource_group_name = data.azurerm_resource_group.rg.name
 }
 
 # SSH rule
@@ -19,7 +19,7 @@ resource "azurerm_network_security_rule" "ssh" {
   source_address_prefix        = "*"            # allow any IP
   destination_address_prefix   = "*"            # all VM IPs
   network_security_group_name  = azurerm_network_security_group.nsg.name
-  resource_group_name          = azurerm_resource_group.rg.name
+  resource_group_name          = data.azurerm_resource_group.rg.name
 }
 
 # HTTP rule (frontend)
@@ -34,7 +34,7 @@ resource "azurerm_network_security_rule" "http" {
   source_address_prefix        = "*"
   destination_address_prefix   = "*"
   network_security_group_name  = azurerm_network_security_group.nsg.name
-  resource_group_name          = azurerm_resource_group.rg.name
+  resource_group_name          = data.azurerm_resource_group.rg.name
 }
 
 # Custom port for backend (example 5000)
@@ -49,7 +49,7 @@ resource "azurerm_network_security_rule" "backend" {
   source_address_prefix        = "*"
   destination_address_prefix   = "*"
   network_security_group_name  = azurerm_network_security_group.nsg.name
-  resource_group_name          = azurerm_resource_group.rg.name
+  resource_group_name          = data.azurerm_resource_group.rg.name
 }
 
 # Associate NSG with Subnet
