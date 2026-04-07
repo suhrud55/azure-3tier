@@ -81,15 +81,14 @@ steps:
 
     sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(WEB_IP) << EOF
 
-      echo "Installing sshpass on Web VM..."
       sudo apt update
       sudo apt install -y sshpass
 
       echo "Copying DB script..."
-      sshpass -p $(VM_PASS) scp database/db_script.sql $(VM_USER)@$(DB_IP):~/db_script.sql
+      sshpass -p $(VM_PASS) scp -o StrictHostKeyChecking=no database/db_script.sql $(VM_USER)@$(DB_IP):~/db_script.sql
 
       echo "Executing DB script..."
-      sshpass -p $(VM_PASS) ssh $(VM_USER)@$(DB_IP) "
+      sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(DB_IP) "
         sudo apt update &&
         sudo apt install -y sqlite3 &&
         sqlite3 test.db < ~/db_script.sql
@@ -97,7 +96,6 @@ steps:
 
     EOF
   displayName: 'Setup Database VM'
-
 # 9️⃣ Deploy Backend
 - script: |
     echo "Deploying backend..."
@@ -109,13 +107,13 @@ steps:
       sudo apt install -y sshpass
 
       echo "Creating backend folder on App VM..."
-      sshpass -p $(VM_PASS) ssh $(VM_USER)@$(APP_IP) "mkdir -p ~/backend"
+      sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(APP_IP) "mkdir -p ~/backend"
 
       echo "Copying backend code..."
-      sshpass -p $(VM_PASS) scp -r backend/* $(VM_USER)@$(APP_IP):~/backend/
+      sshpass -p $(VM_PASS) scp -o StrictHostKeyChecking=no -r backend/* $(VM_USER)@$(APP_IP):~/backend/
 
       echo "Running backend..."
-      sshpass -p $(VM_PASS) ssh $(VM_USER)@$(APP_IP) "
+      sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(APP_IP) "
         sudo apt update &&
         sudo apt install -y python3-pip sqlite3 &&
         cd ~/backend &&
