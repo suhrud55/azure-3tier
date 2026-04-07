@@ -75,23 +75,46 @@ steps:
 
 # 8️⃣ Setup Database VM
 - script: |
-    sshpass -p $(VM_PASS) scp -o StrictHostKeyChecking=no database/db_script.sql $(VM_USER)@$(DB_IP):~/db_script.sql
-    sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(DB_IP) "
-      sudo apt update &&
-      sudo apt install -y sqlite3 &&
-      sqlite3 test.db < ~/database/db_script.sql
-    "
+    echo "Setting up DB via Web VM..."
+
+    sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(WEB_IP) << 'EOF'
+
+      echo "Copying DB script to DB VM..."
+      sshpass -p $(VM_PASS) scp database/db_script.sql $(VM_USER)@$(DB_IP):~/db_script.sql
+
+      echo "Running DB setup..."
+      sshpass -p $(VM_PASS) ssh $(VM_USER)@$(DB_IP) "
+        sudo apt update &&
+        sudo apt install -y sqlite3 &&
+        sqlite3 test.db < ~/db_script.sql
+      "
+
+    EOF
+  displayName: Setup DB via Web VM    "
   displayName: 'Setup Database VM'
 
 # 9️⃣ Deploy Backend
-- script: |
-    sshpass -p $(VM_PASS) scp -o StrictHostKeyChecking=no -r backend/* $(VM_USER)@$(APP_IP):~/backend/
-    sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(APP_IP) "
-      sudo apt update &&
-      sudo apt install -y python3-pip sqlite3 &&
-      cd ~/backend &&
-      pip3 install -r backend/requirements.txt &&
-      nohup python3 backend.py > backend.log 2>&1 &
+- script: |- script: |
+    echo "Deploying via Web VM..."
+
+    sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(WEB_IP) << 'EOF'
+
+      echo "Copying backend to App VM..."
+      sshpass -p $(VM_PASS) ssh $(VM_USER)@$(APP_IP) "mkdir -p ~/backend"
+
+      sshpass -p $(VM_PASS) scp -r backend/* $(VM_USER)@$(APP_IP):~/backend/
+
+      echo "Running backend on App VM..."
+      sshpass -p $(VM_PASS) ssh $(VM_USER)@$(APP_IP) "
+        sudo apt update &&
+        sudo apt install -y python3-pip sqlite3 &&
+        cd ~/backend &&
+        pip3 install -r requirements.txt &&
+        nohup python3 backend.py > backend.log 2>&1 &
+      "
+
+    EOF
+  displayName: Deploy Backend via Web VM
     "
   displayName: 'Deploy Backend'
 
