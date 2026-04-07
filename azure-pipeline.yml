@@ -9,39 +9,29 @@ steps:
 # 1️⃣ Checkout repo
 - checkout: self
 
-# 2️⃣ Install Terraform manually
+# 2️⃣ Install Terraform
 - script: |
     sudo apt-get update
     sudo apt-get install -y unzip wget
 
     wget https://releases.hashicorp.com/terraform/1.5.0/terraform_1.5.0_linux_amd64.zip
-
-    # Remove old binary if exists
     sudo rm -f /usr/local/bin/terraform
-
-    # Create a temp folder for unzip
-    mkdir -p tf_tmp
-    unzip -o terraform_1.5.0_linux_amd64.zip -d tf_tmp
-
-    # Move the binary
-    sudo mv tf_tmp/terraform /usr/local/bin/
-
-    # Verify installation
+    unzip -o terraform_1.5.0_linux_amd64.zip
+    sudo mv terraform /usr/local/bin/
     terraform -version
   displayName: 'Install Terraform'
-  
 
-# 3️⃣ Azure Login using Service Principal
+# 3️⃣ Azure Login
 - script: |
-    echo "Logging in to Azure..."
     az login --service-principal \
       -u $(AZURE_SP_APP_ID) \
       -p $(AZURE_SP_SECRET) \
       --tenant $(AZURE_TENANT_ID)
+
     az account set --subscription $(AZURE_SUBSCRIPTION_ID)
   displayName: 'Azure Login'
 
-# 4️⃣ Terraform Init & Apply
+# 4️⃣ Terraform Apply
 - script: |
     cd terraform
     terraform init
@@ -50,19 +40,24 @@ steps:
       -var="admin_password=$(VM_PASS)"
   displayName: 'Terraform Apply'
 
-# 5️⃣ Get Terraform Outputs (VM IPs)
+# 5️⃣ Get Outputs
 - script: |
     cd terraform
+
     WEB_IP=$(terraform output -raw web_public_ip)
     APP_IP=$(terraform output -raw app_private_ip)
     DB_IP=$(terraform output -raw db_private_ip)
 
+    echo "WEB_IP=$WEB_IP"
+    echo "APP_IP=$APP_IP"
+    echo "DB_IP=$DB_IP"
+
     echo "##vso[task.setvariable variable=WEB_IP]$WEB_IP"
     echo "##vso[task.setvariable variable=APP_IP]$APP_IP"
     echo "##vso[task.setvariable variable=DB_IP]$DB_IP"
-  displayName: 'Get VM IP Outputs'
+  displayName: 'Get VM IPs'
 
-# 6️⃣ Update Frontend Config with Backend IP
+# 6️⃣ Update Frontend
 - script: |
     sed -i "s|<APP_VM_PRIVATE_IP>|$(APP_IP)|g" frontend/index.html
   displayName: 'Update Frontend Config'
@@ -73,16 +68,16 @@ steps:
     sudo apt-get install -y sshpass
   displayName: 'Install sshpass'
 
-# 8️⃣ Setup Database VM
+# 8️⃣ Setup DB via Web VM
 - script: |
-    echo "Setting up DB via Web VM..."
+    echo "Setting up DB..."
 
-    sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(WEB_IP) << 'EOF'
+    sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(WEB_IP) << EOF
 
-      echo "Copying DB script to DB VM..."
+      echo "Copying DB script..."
       sshpass -p $(VM_PASS) scp database/db_script.sql $(VM_USER)@$(DB_IP):~/db_script.sql
 
-      echo "Running DB setup..."
+      echo "Executing DB script..."
       sshpass -p $(VM_PASS) ssh $(VM_USER)@$(DB_IP) "
         sudo apt update &&
         sudo apt install -y sqlite3 &&
@@ -90,21 +85,18 @@ steps:
       "
 
     EOF
-  displayName: Setup DB via Web VM    "
   displayName: 'Setup Database VM'
 
 # 9️⃣ Deploy Backend
 - script: |
-    echo "Deploying via Web VM..."
+    echo "Deploying backend..."
 
-    sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(WEB_IP) << 'EOF'
+    sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(WEB_IP) << EOF
 
-      echo "Copying backend to App VM..."
       sshpass -p $(VM_PASS) ssh $(VM_USER)@$(APP_IP) "mkdir -p ~/backend"
 
       sshpass -p $(VM_PASS) scp -r backend/* $(VM_USER)@$(APP_IP):~/backend/
 
-      echo "Running backend on App VM..."
       sshpass -p $(VM_PASS) ssh $(VM_USER)@$(APP_IP) "
         sudo apt update &&
         sudo apt install -y python3-pip sqlite3 &&
@@ -114,13 +106,12 @@ steps:
       "
 
     EOF
-  displayName: Deploy Backend via Web VM
-    "
   displayName: 'Deploy Backend'
 
 # 🔟 Deploy Frontend
 - script: |
     sshpass -p $(VM_PASS) scp -o StrictHostKeyChecking=no -r frontend/* $(VM_USER)@$(WEB_IP):~/frontend/
+
     sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(WEB_IP) "
       sudo apt update &&
       sudo apt install -y python3 &&
@@ -129,7 +120,7 @@ steps:
     "
   displayName: 'Deploy Frontend'
 
-# 1️⃣1️⃣ Show Final Output
+# 1️⃣1️⃣ Final Output
 - script: |
     echo "======================================"
     echo "Deployment Complete 🚀"
