@@ -77,9 +77,13 @@ steps:
 
 # 8️⃣ Setup DB via Web VM
 - script: |
-    echo "Setting up DB..."
+    echo "Setting up DB via Web VM..."
 
     sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(WEB_IP) << EOF
+
+      echo "Installing sshpass on Web VM..."
+      sudo apt update
+      sudo apt install -y sshpass
 
       echo "Copying DB script..."
       sshpass -p $(VM_PASS) scp database/db_script.sql $(VM_USER)@$(DB_IP):~/db_script.sql
@@ -100,10 +104,17 @@ steps:
 
     sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(WEB_IP) << EOF
 
+      echo "Installing sshpass on Web VM..."
+      sudo apt update
+      sudo apt install -y sshpass
+
+      echo "Creating backend folder on App VM..."
       sshpass -p $(VM_PASS) ssh $(VM_USER)@$(APP_IP) "mkdir -p ~/backend"
 
+      echo "Copying backend code..."
       sshpass -p $(VM_PASS) scp -r backend/* $(VM_USER)@$(APP_IP):~/backend/
 
+      echo "Running backend..."
       sshpass -p $(VM_PASS) ssh $(VM_USER)@$(APP_IP) "
         sudo apt update &&
         sudo apt install -y python3-pip sqlite3 &&
