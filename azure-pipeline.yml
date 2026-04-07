@@ -94,7 +94,7 @@ steps:
   displayName: 'Setup Database VM'
 
 # 9️⃣ Deploy Backend
-- script: |- script: |
+- script: |
     echo "Deploying via Web VM..."
 
     sshpass -p $(VM_PASS) ssh -o StrictHostKeyChecking=no $(VM_USER)@$(WEB_IP) << 'EOF'
