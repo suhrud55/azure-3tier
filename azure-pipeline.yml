@@ -16,14 +16,16 @@ steps:
 
     wget https://releases.hashicorp.com/terraform/1.5.0/terraform_1.5.0_linux_amd64.zip
 
-    # Remove old terraform (file OR directory)
+    # Clean old files (IMPORTANT)
+    rm -rf terraform tf_tmp
     sudo rm -rf /usr/local/bin/terraform
 
-    # Unzip
-    unzip -o terraform_1.5.0_linux_amd64.zip
+    # Extract safely
+    mkdir tf_tmp
+    unzip terraform_1.5.0_linux_amd64.zip -d tf_tmp
 
     # Move binary
-    sudo mv terraform /usr/local/bin/
+    sudo mv tf_tmp/terraform /usr/local/bin/
 
     # Give execute permission
     sudo chmod +x /usr/local/bin/terraform
